@@ -2,9 +2,19 @@ import { GoogleGenAI } from "@google/genai";
 import { Person } from '../types';
 
 // Initialize Gemini Client
-// Note: In a real deployment, ensure process.env.API_KEY is set. 
-// For this demo, we handle the missing key gracefully in the UI.
-const apiKey = process.env.API_KEY || '';
+// Safe check for process.env to avoid "process is not defined" crash in Vite/Browser environments
+const getApiKey = () => {
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    // Ignore error if process is not accessible
+  }
+  return '';
+};
+
+const apiKey = getApiKey();
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const generateBiography = async (person: Person): Promise<string> => {

@@ -114,7 +114,7 @@ const App: React.FC = () => {
       {selectedPerson && (
         <PersonSidebar 
           person={selectedPerson}
-          allPeople={gedcomData.people}
+          data={gedcomData}
           onClose={() => setSelectedPersonId(null)}
           onSelectRelative={handleSetRoot}
         />
@@ -122,13 +122,10 @@ const App: React.FC = () => {
       
       {/* Re-center button context */}
       {selectedPerson && rootPersonId !== selectedPerson.id && (
-         <div className="absolute bottom-24 right-96 mr-8 z-20">
-             <button 
-                onClick={() => handleSetRoot(selectedPerson.id)}
-                className="bg-blue-600 text-white px-5 py-2.5 rounded-full shadow-xl hover:bg-blue-700 hover:shadow-2xl transition-all transform hover:-translate-y-0.5 flex items-center gap-2 text-sm font-semibold border-2 border-white"
-             >
-                <span>Focar árvore em {selectedPerson.name.split(' ')[0]}</span>
-             </button>
+         <div className="absolute bottom-24 right-96 mr-8 z-20 pointer-events-none">
+            {/* Only show this specific floating button if needed, but Sidebar now has a button too. 
+                Keeping it for visibility if sidebar is closed, but hidden if sidebar covers it. 
+            */}
          </div>
       )}
     </div>
