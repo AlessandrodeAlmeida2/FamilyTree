@@ -1,0 +1,5 @@
+{
+  "name": "Minha Árvore - Visualizador GEDCOM",
+  "description": "Um visualizador moderno e responsivo de genealogia compatível com arquivos GEDCOM, com funcionalidades similares ao FamilySearch e MyHeritage.",
+  "requestFramePermissions": []
+}
