@@ -81,13 +81,14 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
     const ancestorHierarchy = d3.hierarchy<TreeNodeDatum>(ancestorData);
     const descendantHierarchy = descendantData ? d3.hierarchy<TreeNodeDatum>(descendantData) : null;
 
-    // 2. Setup Tree Layouts
-    const nodeWidth = 280; 
-    const nodeHeight = 160; 
+    // 2. Setup Tree Layouts (HORIZONTAL)
+    // In D3 tree nodeSize: [height (vertical spacing), width (horizontal spacing)] when doing horizontal layout manually
+    const horizontalSpacing = 320; // Distance between generations
+    const verticalSpacing = 120;   // Distance between siblings
     
     const treeLayout = d3.tree<TreeNodeDatum>()
-      .nodeSize([nodeHeight, nodeWidth])
-      .separation((a, b) => a.parent === b.parent ? 1.1 : 1.3);
+      .nodeSize([verticalSpacing, horizontalSpacing])
+      .separation((a, b) => a.parent === b.parent ? 1 : 1.1);
 
     // Calculate layouts
     const ancestorRoot = treeLayout(ancestorHierarchy);
@@ -118,17 +119,14 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
     // Initial Center
     const initialTransform = d3.zoomIdentity
       .translate(dimensions.width / 2, dimensions.height / 2)
-      .scale(0.8);
+      .scale(0.75);
     svg.call(zoom.transform, initialTransform);
 
     // Helper to draw nodes and links
+    // isAncestors = true -> Right (Positive X)
+    // isAncestors = false -> Left (Negative X)
     const drawTree = (root: d3.HierarchyPointNode<TreeNodeDatum>, isAncestors: boolean) => {
-        // Adjust coordinates: Ancestors go UP (-x), Descendants go DOWN (+x)
-        // The root (0,0) is shared.
-        // Note: root node is drawn by both, we can skip drawing root in one of them or layer it.
-        // We will skip the root rendering in Descendants to avoid duplicate IDs/visuals.
-        
-        const direction = isAncestors ? -1 : 1;
+        const direction = isAncestors ? 1 : -1;
         
         const nodes = root.descendants();
         const links = root.links();
@@ -140,33 +138,43 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
         
         const linksToDraw = links;
 
-        // Draw Links
-        g.selectAll(`.link-${isAncestors ? 'up' : 'down'}`)
+        // Draw Links (Horizontal Bezier)
+        g.selectAll(`.link-${isAncestors ? 'right' : 'left'}`)
           .data(linksToDraw)
           .enter()
           .append("path")
           .attr("class", "link")
           .attr("fill", "none")
-          .attr("stroke", "#94a3b8")
+          .attr("stroke", "#cbd5e1") // lighter gray
           .attr("stroke-width", 1.5)
           .attr("d", (d) => {
-              // Custom link generator for inverted Y axis on ancestors
-              const s = { y: d.source.x * direction, x: d.source.y };
-              const t = { y: d.target.x * direction, x: d.target.y };
+              // Horizontal layout mapping:
+              // d.x is vertical position (screen Y)
+              // d.y is horizontal depth (screen X)
               
-              return `M${s.x},${s.y}
-                      C${(s.x + t.x) / 2},${s.y}
-                       ${(s.x + t.x) / 2},${t.y}
-                       ${t.x},${t.y}`;
+              // Source point
+              const sX = d.source.y * direction;
+              const sY = d.source.x;
+              
+              // Target point
+              const tX = d.target.y * direction;
+              const tY = d.target.x;
+
+              // Control points for smooth horizontal S-curve
+              return `M${sX},${sY}
+                      C${(sX + tX) / 2},${sY}
+                       ${(sX + tX) / 2},${tY}
+                       ${tX},${tY}`;
           });
 
         // Draw Nodes
-        const nodeGroup = g.selectAll(`.node-${isAncestors ? 'up' : 'down'}`)
+        const nodeGroup = g.selectAll(`.node-${isAncestors ? 'right' : 'left'}`)
           .data(nodesToDraw)
           .enter()
           .append("g")
           .attr("class", "node cursor-pointer")
-          .attr("transform", d => `translate(${d.y},${d.x * direction})`)
+          // Swap x and y for horizontal layout
+          .attr("transform", d => `translate(${d.y * direction},${d.x})`)
           .on("click", (event, d) => {
             event.stopPropagation();
             onSelectPerson(d.data.id);
@@ -191,7 +199,7 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
         }}></div>
         <svg ref={svgRef} className="w-full h-full block cursor-grab active:cursor-grabbing" />
         <div className="absolute top-4 left-4 bg-white/90 backdrop-blur shadow-sm border border-gray-200 px-3 py-1.5 rounded-md text-xs text-gray-500 pointer-events-none select-none z-10">
-           Exibindo Ancestrais (Cima) e Descendentes (Baixo)
+           ← Descendentes | Antepassados →
         </div>
     </div>
   );
