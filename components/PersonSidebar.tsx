@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch, Route } from 'lucide-react';
+import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch } from 'lucide-react';
 import { Person, GedcomData } from '../types';
 import { generateBiography } from '../services/geminiService';
 import { getSiblings } from '../utils/gedcom';
@@ -36,11 +36,10 @@ interface PersonSidebarProps {
   rootId: string;
   onClose: () => void;
   onSelectRelative: (id: string) => void;
-  onTracePath: (targetId: string) => void;
   data: GedcomData; // Pass full data to calculate relationships
 }
 
-export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, onClose, onSelectRelative, onTracePath, data }) => {
+export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, onClose, onSelectRelative, data }) => {
   const [bio, setBio] = useState<string | null>(null);
   const [loadingBio, setLoadingBio] = useState(false);
 
@@ -210,16 +209,6 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, on
                 <GitBranch size={18} />
                 Focar Árvore nesta Pessoa
             </button>
-            
-            {!isRoot && (
-                <button 
-                    onClick={() => onTracePath(person.id)}
-                    className="w-full flex items-center justify-center gap-2 bg-orange-100 text-orange-700 py-3 rounded-lg hover:bg-orange-200 transition-colors text-sm font-medium border border-orange-200"
-                >
-                    <Route size={18} />
-                    Traçar Caminho até Principal
-                </button>
-            )}
         </div>
       </div>
     </div>

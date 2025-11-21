@@ -137,12 +137,23 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
         const nodes = root.descendants();
         const links = root.links();
 
+        let nodesToDraw = nodes;
+        let linksToDraw = links;
+
         // Filter out root for descendants render to avoid double draw
-        const nodesToDraw = (!isAncestors && nodes.length > 0) 
-             ? nodes.filter(n => n.depth > 0) 
-             : nodes;
-        
-        const linksToDraw = links;
+        if (!isAncestors && nodes.length > 0) {
+             nodesToDraw = nodes.filter(n => n.depth > 0);
+        }
+
+        // --- PATH FILTERING LOGIC ---
+        // If a path is highlighted, ONLY show nodes/links in that path
+        if (highlightedPath.length > 0) {
+            nodesToDraw = nodesToDraw.filter(d => highlightedPath.includes(d.data.id));
+            linksToDraw = linksToDraw.filter(l => 
+                highlightedPath.includes(l.source.data.id) && 
+                highlightedPath.includes(l.target.data.id)
+            );
+        }
 
         // Draw Links
         g.selectAll(`.link-${isAncestors ? 'anc' : 'desc'}`)
@@ -155,40 +166,30 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
              // Highlight path logic
              const sourceInPath = highlightedPath.includes(d.source.data.id);
              const targetInPath = highlightedPath.includes(d.target.data.id);
-             return (sourceInPath && targetInPath) ? "#f97316" : "#cbd5e1"; // Orange if active, else gray
+             return (sourceInPath && targetInPath) ? "#f97316" : "#cbd5e1"; 
           })
           .attr("stroke-width", (d) => {
              const sourceInPath = highlightedPath.includes(d.source.data.id);
              const targetInPath = highlightedPath.includes(d.target.data.id);
-             return (sourceInPath && targetInPath) ? 3 : 1.5;
+             return (sourceInPath && targetInPath) ? 4 : 1.5;
           })
           .attr("d", (d) => {
               if (isMobile) {
-                  // Vertical Layout Logic 
-                  // Ancestors (Up): Link leaves Top (y-40), enters Bottom (y+40)
-                  // Descendants (Down): Link leaves Bottom (y+40), enters Top (y-40)
-                  
-                  // Direction Multiplier for Nodes
-                  // Ancestors: Y is negative. Descendants: Y is positive.
+                  // Mobile (Vertical) Layout Logic 
                   const dir = isAncestors ? -1 : 1;
-                  
                   const sourceX = d.source.x;
                   const sourceYCenter = d.source.y * dir;
-                  
                   const targetX = d.target.x;
                   const targetYCenter = d.target.y * dir;
 
-                  // Adjust Start/End points based on Card Height
                   let sY, tY;
 
                   if (isAncestors) {
-                      // Source is "Child" (visually lower), Target is "Parent" (visually higher)
-                      // Line: Top of Source -> Bottom of Target
+                      // Link: Top of Source -> Bottom of Target
                       sY = sourceYCenter - HALF_H; 
                       tY = targetYCenter + HALF_H; 
                   } else {
-                      // Source is "Parent" (visually higher), Target is "Child" (visually lower)
-                      // Line: Bottom of Source -> Top of Target
+                      // Link: Bottom of Source -> Top of Target
                       sY = sourceYCenter + HALF_H;
                       tY = targetYCenter - HALF_H;
                   }
@@ -198,24 +199,19 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
                            ${targetX},${(sY + tY) / 2}
                            ${targetX},${tY}`;
               } else {
-                  // Horizontal Layout Logic
-                  // Ancestors (Right): X is depth. Y is vertical pos.
+                  // Desktop (Horizontal) Layout Logic
                   const dir = isAncestors ? 1 : -1;
-                  
-                  const sourceY = d.source.x; // Vertical pos
-                  const sourceXCenter = d.source.y * dir; // Horizontal pos
-                  
+                  const sourceY = d.source.x; 
+                  const sourceXCenter = d.source.y * dir; 
                   const targetY = d.target.x;
                   const targetXCenter = d.target.y * dir;
 
                   let sX, tX;
                   
                   if (isAncestors) {
-                      // Source (Left) -> Target (Right)
                       sX = sourceXCenter + HALF_W;
                       tX = targetXCenter - HALF_W;
                   } else {
-                      // Source (Right) -> Target (Left)
                       sX = sourceXCenter - HALF_W;
                       tX = targetXCenter + HALF_W;
                   }
@@ -268,9 +264,7 @@ export const TreeVisualization = forwardRef<TreeHandle, TreeVisualizationProps>(
         }}></div>
         <svg ref={svgRef} className="w-full h-full block cursor-grab active:cursor-grabbing" />
         <div className="absolute top-4 left-4 bg-white/90 backdrop-blur shadow-sm border border-gray-200 px-3 py-1.5 rounded-md text-xs text-gray-500 pointer-events-none select-none z-10">
-           {isMobile 
-             ? "↑ Antepassados | Descendentes ↓" 
-             : "← Descendentes | Antepassados →"}
+           {highlightedPath.length > 0 ? "Modo Caminho Direto" : (isMobile ? "↑ Antepassados | Descendentes ↓" : "← Descendentes | Antepassados →")}
         </div>
     </div>
   );
@@ -389,7 +383,7 @@ function renderNodeContent(
       .attr("x", -50)
       .attr("y", 26)
       .text(d => {
-          if (d.data.id === rootId) return "Pessoa Principal";
+          if (d.data.id === rootId) return "Pessoa Central";
           return d.data.data.birth?.place?.split(',')[0] || "";
       })
       .attr("font-size", "10px")

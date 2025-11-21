@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TreeVisualization, TreeHandle } from './components/TreeVisualization';
 import { PersonSidebar } from './components/PersonSidebar';
 import { Controls } from './components/Controls';
-import { parseGedcom, MOCK_GEDCOM_FILE, findFirstPersonId, findShortestPath } from './utils/gedcom';
+import { parseGedcom, MOCK_GEDCOM_FILE, findFirstPersonId } from './utils/gedcom';
 import { GedcomData } from './types';
+
+const MAIN_PERSON_ID = '@I1@'; // ID fixo de Valter Alessandro
 
 const App: React.FC = () => {
   const [gedcomData, setGedcomData] = useState<GedcomData | null>(null);
@@ -11,7 +13,6 @@ const App: React.FC = () => {
   const [originalRootId, setOriginalRootId] = useState<string | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [generations, setGenerations] = useState<number>(3);
-  const [highlightedPath, setHighlightedPath] = useState<string[]>([]);
 
   // Reference to the Tree Component to control zoom/pan
   const treeRef = useRef<TreeHandle>(null);
@@ -21,7 +22,10 @@ const App: React.FC = () => {
     // Simulate loading the "Gedcom_nov2025.ged" file
     const data = parseGedcom(MOCK_GEDCOM_FILE);
     setGedcomData(data);
-    const startId = findFirstPersonId(data);
+    
+    // Force start with specific ID or first person
+    const startId = data.people[MAIN_PERSON_ID] ? MAIN_PERSON_ID : findFirstPersonId(data);
+    
     setRootPersonId(startId);
     setOriginalRootId(startId);
   }, []);
@@ -29,12 +33,10 @@ const App: React.FC = () => {
   // Handlers
   const handlePersonClick = useCallback((id: string) => {
     setSelectedPersonId(id);
-    setHighlightedPath([]); // Clear path when clicking a new person unless explicitly tracing
   }, []);
 
   const handleSetRoot = (id: string) => {
     setRootPersonId(id);
-    setHighlightedPath([]);
     // Reset zoom to center on new tree
     setTimeout(() => treeRef.current?.reset(), 100);
   };
@@ -42,15 +44,8 @@ const App: React.FC = () => {
   const handleGoHome = () => {
     if (originalRootId) {
         handleSetRoot(originalRootId);
+        setGenerations(3);
         setSelectedPersonId(originalRootId);
-    }
-  };
-
-  const handleTracePath = (targetId: string) => {
-    if (gedcomData && rootPersonId && targetId) {
-        const path = findShortestPath(gedcomData, rootPersonId, targetId);
-        setHighlightedPath(path);
-        // Keep the target person selected so the sidebar stays open
     }
   };
 
@@ -66,7 +61,6 @@ const App: React.FC = () => {
           const newRoot = findFirstPersonId(data);
           setRootPersonId(newRoot);
           setOriginalRootId(newRoot);
-          setHighlightedPath([]);
           setTimeout(() => treeRef.current?.reset(), 100);
         }
       };
@@ -98,16 +92,17 @@ const App: React.FC = () => {
           rootId={rootPersonId}
           generations={generations}
           onSelectPerson={handlePersonClick}
-          highlightedPath={highlightedPath}
         />
 
         {/* Top Header (Simple) */}
         <div className="absolute top-0 left-0 w-full p-6 pointer-events-none z-10">
-           <div className="inline-block bg-white/50 backdrop-blur-sm p-2 rounded-lg">
+           <div className="inline-block bg-white/50 backdrop-blur-sm p-2 rounded-lg shadow-sm border border-white/20">
              <h1 className="text-xl font-bold text-gray-800 pointer-events-auto">
                 Minha Árvore
              </h1>
-             <p className="text-xs text-gray-600">GEDCOM Viewer</p>
+             <p className="text-xs text-gray-600">
+                GEDCOM Viewer
+             </p>
            </div>
         </div>
 
@@ -131,7 +126,6 @@ const App: React.FC = () => {
           data={gedcomData}
           onClose={() => setSelectedPersonId(null)}
           onSelectRelative={handleSetRoot}
-          onTracePath={handleTracePath}
         />
       )}
     </div>
