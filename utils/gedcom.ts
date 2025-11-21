@@ -9,7 +9,7 @@ export const MOCK_GEDCOM_FILE = `
 2 FORM LINEAGE-LINKED
 1 CHAR UTF-8
 0 @I1@ INDI
-1 NAME João /Silva/
+1 NAME Valter Alessandro de Almeida /D'Alvia Agostini/
 1 SEX M
 1 BIRT
 2 DATE 10 JAN 1980
@@ -255,4 +255,57 @@ export const getSiblings = (personId: string, data: GedcomData): Person[] => {
         .filter(childId => childId !== personId)
         .map(childId => data.people[childId])
         .filter(p => !!p);
+};
+
+// Find shortest path between two people using BFS
+export const findShortestPath = (data: GedcomData, startId: string, targetId: string): string[] => {
+    if (startId === targetId) return [startId];
+
+    const queue: { id: string; path: string[] }[] = [{ id: startId, path: [startId] }];
+    const visited = new Set<string>();
+    visited.add(startId);
+
+    while (queue.length > 0) {
+        const { id, path } = queue.shift()!;
+        const person = data.people[id];
+        if (!person) continue;
+
+        // Identify neighbors (Parents, Children, Spouses)
+        const neighbors: string[] = [];
+
+        // 1. Parents (via FAMC)
+        if (person.famc) {
+            const fam = data.families[person.famc];
+            if (fam) {
+                if (fam.husb) neighbors.push(fam.husb);
+                if (fam.wife) neighbors.push(fam.wife);
+                // Siblings are technically neighbors too, but usually path goes via parents
+                if (fam.children) neighbors.push(...fam.children);
+            }
+        }
+
+        // 2. Spouses and Children (via FAMS)
+        if (person.fams) {
+            person.fams.forEach(famId => {
+                const fam = data.families[famId];
+                if (fam) {
+                    if (fam.husb && fam.husb !== id) neighbors.push(fam.husb);
+                    if (fam.wife && fam.wife !== id) neighbors.push(fam.wife);
+                    if (fam.children) neighbors.push(...fam.children);
+                }
+            });
+        }
+
+        for (const neighborId of neighbors) {
+            if (neighborId === targetId) {
+                return [...path, neighborId];
+            }
+            if (!visited.has(neighborId)) {
+                visited.add(neighborId);
+                queue.push({ id: neighborId, path: [...path, neighborId] });
+            }
+        }
+    }
+
+    return [];
 };

@@ -1,17 +1,46 @@
 import React, { useState } from 'react';
-import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch } from 'lucide-react';
+import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch, Route } from 'lucide-react';
 import { Person, GedcomData } from '../types';
 import { generateBiography } from '../services/geminiService';
 import { getSiblings } from '../utils/gedcom';
 
+interface RelativeItemProps {
+  p: Person;
+  label?: string;
+  onSelect: (id: string) => void;
+}
+
+const RelativeItem: React.FC<RelativeItemProps> = ({ p, label, onSelect }) => (
+  <div 
+    onClick={() => onSelect(p.id)}
+    className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-gray-100"
+  >
+      <img 
+        src={p.imageUrl || `https://picsum.photos/seed/${p.id}/100/100`} 
+        alt={p.name} 
+        className="w-10 h-10 rounded-full object-cover bg-gray-200" 
+      />
+      <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">
+              {p.name} {p.surname}
+          </p>
+          <p className="text-xs text-gray-500 truncate">
+              {p.birth?.date?.split(' ').pop() || '?'} — {label}
+          </p>
+      </div>
+  </div>
+);
+
 interface PersonSidebarProps {
   person: Person | null;
+  rootId: string;
   onClose: () => void;
   onSelectRelative: (id: string) => void;
+  onTracePath: (targetId: string) => void;
   data: GedcomData; // Pass full data to calculate relationships
 }
 
-export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, onClose, onSelectRelative, data }) => {
+export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, onClose, onSelectRelative, onTracePath, data }) => {
   const [bio, setBio] = useState<string | null>(null);
   const [loadingBio, setLoadingBio] = useState(false);
 
@@ -62,26 +91,7 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, onClose, o
     });
   }
 
-  const RelativeItem = ({ p, label }: { p: Person, label?: string }) => (
-      <div 
-        onClick={() => onSelectRelative(p.id)}
-        className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-gray-100"
-      >
-          <img 
-            src={p.imageUrl || `https://picsum.photos/seed/${p.id}/100/100`} 
-            alt={p.name} 
-            className="w-10 h-10 rounded-full object-cover bg-gray-200" 
-          />
-          <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                  {p.name} {p.surname}
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                  {p.birth?.date?.split(' ').pop() || '?'} — {label}
-              </p>
-          </div>
-      </div>
-  );
+  const isRoot = person.id === rootId;
 
   return (
     <div className="absolute top-0 right-0 h-full w-96 bg-white shadow-2xl z-30 overflow-y-auto border-l border-gray-200 transform transition-transform duration-300 ease-in-out flex flex-col">
@@ -140,7 +150,7 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, onClose, o
                 <div>
                     <p className="text-xs font-semibold text-gray-400 uppercase mb-1 ml-1">Cônjuge(s)</p>
                     <div className="space-y-1">
-                        {spouses.map(s => <RelativeItem key={s.id} p={s} label="Esposo(a)" />)}
+                        {spouses.map(s => <RelativeItem key={s.id} p={s} label="Esposo(a)" onSelect={onSelectRelative} />)}
                     </div>
                 </div>
             )}
@@ -149,7 +159,7 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, onClose, o
                 <div>
                     <p className="text-xs font-semibold text-gray-400 uppercase mb-1 ml-1">Filhos</p>
                     <div className="space-y-1">
-                        {children.map(c => <RelativeItem key={c.id} p={c} label="Filho(a)" />)}
+                        {children.map(c => <RelativeItem key={c.id} p={c} label="Filho(a)" onSelect={onSelectRelative} />)}
                     </div>
                 </div>
             )}
@@ -158,7 +168,7 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, onClose, o
                 <div>
                     <p className="text-xs font-semibold text-gray-400 uppercase mb-1 ml-1">Irmãos</p>
                     <div className="space-y-1">
-                        {siblings.map(s => <RelativeItem key={s.id} p={s} label="Irmão/ã" />)}
+                        {siblings.map(s => <RelativeItem key={s.id} p={s} label="Irmão/ã" onSelect={onSelectRelative} />)}
                     </div>
                 </div>
             )}
@@ -192,7 +202,7 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, onClose, o
            </div>
         </div>
 
-        <div className="pb-6">
+        <div className="pb-6 space-y-3">
             <button 
                 onClick={() => onSelectRelative(person.id)}
                 className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-md"
@@ -200,6 +210,16 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, onClose, o
                 <GitBranch size={18} />
                 Focar Árvore nesta Pessoa
             </button>
+            
+            {!isRoot && (
+                <button 
+                    onClick={() => onTracePath(person.id)}
+                    className="w-full flex items-center justify-center gap-2 bg-orange-100 text-orange-700 py-3 rounded-lg hover:bg-orange-200 transition-colors text-sm font-medium border border-orange-200"
+                >
+                    <Route size={18} />
+                    Traçar Caminho até Principal
+                </button>
+            )}
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TreeVisualization, TreeHandle } from './components/TreeVisualization';
 import { PersonSidebar } from './components/PersonSidebar';
 import { Controls } from './components/Controls';
-import { parseGedcom, MOCK_GEDCOM_FILE, findFirstPersonId } from './utils/gedcom';
+import { parseGedcom, MOCK_GEDCOM_FILE, findFirstPersonId, findShortestPath } from './utils/gedcom';
 import { GedcomData } from './types';
 
 const App: React.FC = () => {
@@ -11,6 +11,7 @@ const App: React.FC = () => {
   const [originalRootId, setOriginalRootId] = useState<string | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [generations, setGenerations] = useState<number>(3);
+  const [highlightedPath, setHighlightedPath] = useState<string[]>([]);
 
   // Reference to the Tree Component to control zoom/pan
   const treeRef = useRef<TreeHandle>(null);
@@ -28,10 +29,12 @@ const App: React.FC = () => {
   // Handlers
   const handlePersonClick = useCallback((id: string) => {
     setSelectedPersonId(id);
+    setHighlightedPath([]); // Clear path when clicking a new person unless explicitly tracing
   }, []);
 
   const handleSetRoot = (id: string) => {
     setRootPersonId(id);
+    setHighlightedPath([]);
     // Reset zoom to center on new tree
     setTimeout(() => treeRef.current?.reset(), 100);
   };
@@ -40,6 +43,14 @@ const App: React.FC = () => {
     if (originalRootId) {
         handleSetRoot(originalRootId);
         setSelectedPersonId(originalRootId);
+    }
+  };
+
+  const handleTracePath = (targetId: string) => {
+    if (gedcomData && rootPersonId && targetId) {
+        const path = findShortestPath(gedcomData, rootPersonId, targetId);
+        setHighlightedPath(path);
+        // Keep the target person selected so the sidebar stays open
     }
   };
 
@@ -55,6 +66,7 @@ const App: React.FC = () => {
           const newRoot = findFirstPersonId(data);
           setRootPersonId(newRoot);
           setOriginalRootId(newRoot);
+          setHighlightedPath([]);
           setTimeout(() => treeRef.current?.reset(), 100);
         }
       };
@@ -86,6 +98,7 @@ const App: React.FC = () => {
           rootId={rootPersonId}
           generations={generations}
           onSelectPerson={handlePersonClick}
+          highlightedPath={highlightedPath}
         />
 
         {/* Top Header (Simple) */}
@@ -114,19 +127,12 @@ const App: React.FC = () => {
       {selectedPerson && (
         <PersonSidebar 
           person={selectedPerson}
+          rootId={rootPersonId}
           data={gedcomData}
           onClose={() => setSelectedPersonId(null)}
           onSelectRelative={handleSetRoot}
+          onTracePath={handleTracePath}
         />
-      )}
-      
-      {/* Re-center button context */}
-      {selectedPerson && rootPersonId !== selectedPerson.id && (
-         <div className="absolute bottom-24 right-96 mr-8 z-20 pointer-events-none">
-            {/* Only show this specific floating button if needed, but Sidebar now has a button too. 
-                Keeping it for visibility if sidebar is closed, but hidden if sidebar covers it. 
-            */}
-         </div>
       )}
     </div>
   );
