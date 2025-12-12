@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch, Route, Search } from 'lucide-react';
+import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch, Route, Search, Link as LinkIcon } from 'lucide-react';
 import { Person, GedcomData } from '../types';
 import { generateBiography } from '../services/geminiService';
-import { getSiblings } from '../utils/gedcom';
+import { getSiblings, getRelationshipName } from '../utils/gedcom';
 
 interface RelativeItemProps {
   p: Person;
@@ -38,9 +38,10 @@ interface PersonSidebarProps {
   onSelectRelative: (id: string) => void;
   onTracePath: (targetId: string) => void;
   data: GedcomData; // Pass full data to calculate relationships
+  mainPersonId?: string | null; // ID of the logged in user or main tree person
 }
 
-export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, onClose, onSelectRelative, onTracePath, data }) => {
+export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, onClose, onSelectRelative, onTracePath, data, mainPersonId }) => {
   const [bio, setBio] = useState<string | null>(null);
   const [loadingBio, setLoadingBio] = useState(false);
   
@@ -55,6 +56,12 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, on
     setSearchTerm('');
     setTargetId(null);
   }, [person?.id]);
+
+  // Calculate Relationship
+  const relationship = useMemo(() => {
+      if (!mainPersonId || !person) return null;
+      return getRelationshipName(data, mainPersonId, person.id);
+  }, [data, mainPersonId, person]);
 
   if (!person) return null;
 
@@ -107,8 +114,6 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, on
     });
   }
 
-  const isRoot = person.id === rootId;
-
   return (
     <div className="absolute top-0 right-0 h-full w-96 bg-white shadow-2xl z-30 overflow-y-auto border-l border-gray-200 transform transition-transform duration-300 ease-in-out flex flex-col">
       
@@ -125,9 +130,17 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, on
           <h2 className="text-2xl font-bold text-white leading-tight">
             {person.name} <span className="text-blue-300">{person.surname}</span>
           </h2>
-          <p className="text-white/80 text-sm mt-1 font-medium">
-            {birthYear} — {deathYear}
-          </p>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+             <p className="text-white/80 text-sm font-medium">
+                {birthYear} — {deathYear}
+             </p>
+             {relationship && (
+                 <span className="bg-blue-600/90 text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm backdrop-blur-sm border border-blue-400/50">
+                    <LinkIcon size={10} />
+                    {relationship}
+                 </span>
+             )}
+          </div>
         </div>
       </div>
 

@@ -179,7 +179,8 @@ export const buildAncestryTree = (
     personId: string, 
     data: GedcomData, 
     currentDepth: number, 
-    maxDepth: number
+    maxDepth: number,
+    highlightedPath: string[] = [] // New Param
 ): TreeNodeDatum | null => {
     const person = data.people[personId];
     if (!person || currentDepth > maxDepth) return null;
@@ -191,15 +192,16 @@ export const buildAncestryTree = (
         children: []
     };
 
+    // Standard Parent Logic
     if (person.famc) {
         const family = data.families[person.famc];
         if (family) {
             if (family.husb) {
-                const father = buildAncestryTree(family.husb, data, currentDepth + 1, maxDepth);
+                const father = buildAncestryTree(family.husb, data, currentDepth + 1, maxDepth, highlightedPath);
                 if (father) node.children?.push(father);
             }
             if (family.wife) {
-                const mother = buildAncestryTree(family.wife, data, currentDepth + 1, maxDepth);
+                const mother = buildAncestryTree(family.wife, data, currentDepth + 1, maxDepth, highlightedPath);
                 if (mother) node.children?.push(mother);
             }
         }
@@ -208,12 +210,13 @@ export const buildAncestryTree = (
     return node;
 };
 
-// Build Descendants Tree (Going Down: Children)
+// Build Descendants Tree (Going Down: Children AND Spouses in Path)
 export const buildDescendantsTree = (
     personId: string,
     data: GedcomData,
     currentDepth: number,
-    maxDepth: number
+    maxDepth: number,
+    highlightedPath: string[] = [] // New Param
 ): TreeNodeDatum | null => {
     const person = data.people[personId];
     if (!person || currentDepth > maxDepth) return null;
@@ -225,19 +228,54 @@ export const buildDescendantsTree = (
         children: []
     };
 
-    // Iterate over all families where this person is a spouse (parent)
+    const addedIds = new Set<string>();
+
+    // 1. Standard Children Logic
     if (person.fams && person.fams.length > 0) {
         person.fams.forEach(famId => {
             const family = data.families[famId];
             if (family && family.children) {
                 family.children.forEach(childId => {
-                    const childNode = buildDescendantsTree(childId, data, currentDepth + 1, maxDepth);
+                    if (addedIds.has(childId)) return;
+                    const childNode = buildDescendantsTree(childId, data, currentDepth + 1, maxDepth, highlightedPath);
                     if (childNode) {
                         node.children?.push(childNode);
+                        addedIds.add(childId);
                     }
                 });
             }
         });
+    }
+
+    // 2. PATH TRACING HACK: Inject Spouse/Partner if they are next in the path
+    // This allows "crossing over" marriage lines in the visual tree
+    if (highlightedPath.length > 0) {
+        const pathIndex = highlightedPath.indexOf(personId);
+        if (pathIndex !== -1) {
+            const nextInPath = highlightedPath[pathIndex + 1];
+            const prevInPath = highlightedPath[pathIndex - 1];
+            const targetNeighbors = [nextInPath, prevInPath].filter(Boolean);
+
+            targetNeighbors.forEach(targetId => {
+                if (addedIds.has(targetId)) return; // Already added as child
+                
+                // Check if this target is a spouse
+                const isSpouse = person.fams?.some(famId => {
+                    const fam = data.families[famId];
+                    return (fam && (fam.husb === targetId || fam.wife === targetId));
+                });
+
+                if (isSpouse) {
+                    // Inject spouse as a "Visual Child" to maintain continuity in the D3 Tree layout
+                    const spouseNode = buildDescendantsTree(targetId, data, currentDepth + 1, maxDepth, highlightedPath);
+                    if (spouseNode) {
+                        spouseNode.isSpouse = true; // Mark visual distinction
+                        node.children?.push(spouseNode);
+                        addedIds.add(targetId);
+                    }
+                }
+            });
+        }
     }
 
     return node;
@@ -270,24 +308,15 @@ export const findShortestPath = (data: GedcomData, startId: string, targetId: st
         const person = data.people[id];
         if (!person) continue;
 
-        // Identify neighbors (Parents, Children, Spouses)
         const neighbors: string[] = [];
 
         // 1. Parents (via FAMC)
         if (person.famc) {
             const fam = data.families[person.famc];
             if (fam) {
-                const hasParents = !!(fam.husb || fam.wife);
-
                 if (fam.husb) neighbors.push(fam.husb);
                 if (fam.wife) neighbors.push(fam.wife);
-                
-                // IMPORTANT: Only add siblings if no parents are defined. 
-                // We prefer the path to go UP to the parent and then DOWN to the sibling.
-                // This ensures we find the common ancestor (Peak) correctly for visualization.
-                if (!hasParents && fam.children) {
-                    neighbors.push(...fam.children);
-                }
+                if (fam.children) neighbors.push(...fam.children);
             }
         }
 
@@ -317,42 +346,139 @@ export const findShortestPath = (data: GedcomData, startId: string, targetId: st
     return [];
 };
 
-// Finds the "peak" node in a path. The peak is the oldest common ancestor in the path sequence.
-// This is used to center the tree visualization so that both ends of the path are visible as descendants/ancestors.
 export const getPathPeak = (data: GedcomData, path: string[]): string => {
     if (!path || path.length === 0) return '';
-    if (path.length === 1) return path[0];
     
-    // We traverse the path and look for the transition from "Going Up" (Parent) to "Going Down" (Child).
-    // Or simply, we find the index that acts as a parent/ancestor to its neighbors in the path.
+    for (let i = 0; i < path.length; i++) {
+        const currId = path[i];
+        const prevId = path[i-1];
+        const nextId = path[i+1];
+        
+        const curr = data.people[currId];
+        if (!curr) continue;
+        
+        let isParentToPrev = false;
+        let isParentToNext = false;
+        
+        if (prevId) {
+             const prev = data.people[prevId];
+             if (prev?.famc) {
+                 const fam = data.families[prev.famc];
+                 if (fam && (fam.husb === currId || fam.wife === currId)) isParentToPrev = true;
+             }
+        }
+        
+        if (nextId) {
+             const next = data.people[nextId];
+             if (next?.famc) {
+                 const fam = data.families[next.famc];
+                 if (fam && (fam.husb === currId || fam.wife === currId)) isParentToNext = true;
+             }
+        }
+        
+        if (prevId && nextId && isParentToPrev && isParentToNext) return currId;
+    }
     
-    let peakIndex = 0;
-    
-    // Check transitions
     for (let i = 0; i < path.length - 1; i++) {
         const current = data.people[path[i]];
         const next = data.people[path[i+1]];
-        
-        if (!current || !next) continue;
-        
-        // Is 'next' a parent of 'current'?
-        let isParent = false;
         if (current.famc) {
             const fam = data.families[current.famc];
-            if (fam && (fam.husb === next.id || fam.wife === next.id)) {
-                isParent = true;
+            if (fam && (fam.husb === next?.id || fam.wife === next?.id)) {
+                continue;
             }
         }
+        return current.id;
+    }
+    
+    return path[0];
+};
+
+// Helper for Relationship Calculation
+export const getAncestors = (data: GedcomData, startId: string): Map<string, number> => {
+    const ancestors = new Map<string, number>();
+    const queue: { id: string; dist: number }[] = [{ id: startId, dist: 0 }];
+    
+    while (queue.length > 0) {
+        const { id, dist } = queue.shift()!;
+        if (ancestors.has(id)) continue;
+        ancestors.set(id, dist);
         
-        if (isParent) {
-            // If next is parent, we are climbing up the tree. Update peak.
-            peakIndex = i + 1;
-        } else {
-            // If next is NOT parent (child or spouse), we are likely descending or moving sideways.
-            // We assume the climb has ended.
-            break;
+        const person = data.people[id];
+        if (person?.famc) {
+            const fam = data.families[person.famc];
+            if (fam) {
+                if (fam.husb) queue.push({ id: fam.husb, dist: dist + 1 });
+                if (fam.wife) queue.push({ id: fam.wife, dist: dist + 1 });
+            }
+        }
+    }
+    return ancestors;
+};
+
+// Calculate Relationship Name (Portuguese)
+export const getRelationshipName = (data: GedcomData, baseId: string, targetId: string): string => {
+    if (baseId === targetId) return "Você (Pessoa Principal)";
+    
+    // 1. Direct Spouse Check
+    const base = data.people[baseId];
+    if (base?.fams) {
+        for (const famId of base.fams) {
+            const fam = data.families[famId];
+            if (fam && (fam.husb === targetId || fam.wife === targetId)) return "Esposo(a)";
+        }
+    }
+
+    // 2. Blood Relationship (Lowest Common Ancestor - LCA)
+    const ancestorsBase = getAncestors(data, baseId);
+    const ancestorsTarget = getAncestors(data, targetId);
+    
+    let lcaId: string | null = null;
+    let minSum = Infinity;
+    
+    for (const [id, distBase] of ancestorsBase.entries()) {
+        if (ancestorsTarget.has(id)) {
+            const distTarget = ancestorsTarget.get(id)!;
+            if (distBase + distTarget < minSum) {
+                minSum = distBase + distTarget;
+                lcaId = id;
+            }
         }
     }
     
-    return path[peakIndex];
+    if (lcaId) {
+        const dUp = ancestorsBase.get(lcaId)!;    // Steps up from Base to LCA
+        const dDown = ancestorsTarget.get(lcaId)!; // Steps down from LCA to Target
+        
+        if (dUp === 0 && dDown === 1) return "Filho(a)";
+        if (dUp === 0 && dDown === 2) return "Neto(a)";
+        if (dUp === 0 && dDown === 3) return "Bisneto(a)";
+        if (dUp === 0 && dDown > 3) return `${dDown - 2}º Neto(a)`;
+
+        if (dUp === 1 && dDown === 0) return "Pai/Mãe";
+        if (dUp === 2 && dDown === 0) return "Avô/Avó";
+        if (dUp === 3 && dDown === 0) return "Bisavô/Bisavó";
+        if (dUp > 3 && dDown === 0) return `${dUp - 2}º Avô/Avó`;
+
+        if (dUp === 1 && dDown === 1) return "Irmão/Irmã";
+        
+        if (dUp === 2 && dDown === 1) return "Tio(a)";
+        if (dUp === 1 && dDown === 2) return "Sobrinho(a)";
+        
+        if (dUp === 3 && dDown === 1) return "Tio-avô/Tia-avó";
+        if (dUp === 1 && dDown === 3) return "Sobrinho-neto(a)";
+        
+        if (dUp === 2 && dDown === 2) return "Primo(a)";
+        if (dUp === 3 && dDown === 3) return "Primo(a) de 2º Grau";
+        
+        if (dUp > 2 && dDown > 2) return "Primo(a) Distante";
+        
+        return "Parente Consanguíneo";
+    }
+    
+    // 3. Fallback: Check if path exists but strictly by marriage
+    const path = findShortestPath(data, baseId, targetId);
+    if (path.length > 0) return "Parente por Casamento";
+
+    return "Sem relação direta";
 };

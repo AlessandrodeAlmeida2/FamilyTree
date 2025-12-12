@@ -230,6 +230,7 @@ const App: React.FC = () => {
           onClose={() => setSelectedPersonId(null)}
           onSelectRelative={handleSetRoot}
           onTracePath={handleTracePath}
+          mainPersonId={originalRootId}
         />
       )}
     </div>
