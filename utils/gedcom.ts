@@ -277,10 +277,17 @@ export const findShortestPath = (data: GedcomData, startId: string, targetId: st
         if (person.famc) {
             const fam = data.families[person.famc];
             if (fam) {
+                const hasParents = !!(fam.husb || fam.wife);
+
                 if (fam.husb) neighbors.push(fam.husb);
                 if (fam.wife) neighbors.push(fam.wife);
-                // Siblings are technically neighbors too, but usually path goes via parents
-                if (fam.children) neighbors.push(...fam.children);
+                
+                // IMPORTANT: Only add siblings if no parents are defined. 
+                // We prefer the path to go UP to the parent and then DOWN to the sibling.
+                // This ensures we find the common ancestor (Peak) correctly for visualization.
+                if (!hasParents && fam.children) {
+                    neighbors.push(...fam.children);
+                }
             }
         }
 
@@ -308,4 +315,44 @@ export const findShortestPath = (data: GedcomData, startId: string, targetId: st
     }
 
     return [];
+};
+
+// Finds the "peak" node in a path. The peak is the oldest common ancestor in the path sequence.
+// This is used to center the tree visualization so that both ends of the path are visible as descendants/ancestors.
+export const getPathPeak = (data: GedcomData, path: string[]): string => {
+    if (!path || path.length === 0) return '';
+    if (path.length === 1) return path[0];
+    
+    // We traverse the path and look for the transition from "Going Up" (Parent) to "Going Down" (Child).
+    // Or simply, we find the index that acts as a parent/ancestor to its neighbors in the path.
+    
+    let peakIndex = 0;
+    
+    // Check transitions
+    for (let i = 0; i < path.length - 1; i++) {
+        const current = data.people[path[i]];
+        const next = data.people[path[i+1]];
+        
+        if (!current || !next) continue;
+        
+        // Is 'next' a parent of 'current'?
+        let isParent = false;
+        if (current.famc) {
+            const fam = data.families[current.famc];
+            if (fam && (fam.husb === next.id || fam.wife === next.id)) {
+                isParent = true;
+            }
+        }
+        
+        if (isParent) {
+            // If next is parent, we are climbing up the tree. Update peak.
+            peakIndex = i + 1;
+        } else {
+            // If next is NOT parent (child or spouse), we are likely descending or moving sideways.
+            // We assume the climb has ended.
+            break;
+        }
+    }
+    
+    return path[peakIndex];
 };

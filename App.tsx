@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TreeVisualization, TreeHandle } from './components/TreeVisualization';
 import { PersonSidebar } from './components/PersonSidebar';
 import { Controls } from './components/Controls';
-import { parseGedcom, MOCK_GEDCOM_FILE, findFirstPersonId } from './utils/gedcom';
+import { parseGedcom, MOCK_GEDCOM_FILE, findFirstPersonId, findShortestPath, getPathPeak } from './utils/gedcom';
 import { GedcomData } from './types';
 
 const MAIN_PERSON_ID = '@I1@'; // ID fixo de Valter Alessandro
@@ -13,6 +13,7 @@ const App: React.FC = () => {
   const [originalRootId, setOriginalRootId] = useState<string | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [generations, setGenerations] = useState<number>(3);
+  const [highlightedPath, setHighlightedPath] = useState<string[]>([]);
 
   // Reference to the Tree Component to control zoom/pan
   const treeRef = useRef<TreeHandle>(null);
@@ -37,6 +38,7 @@ const App: React.FC = () => {
 
   const handleSetRoot = (id: string) => {
     setRootPersonId(id);
+    setHighlightedPath([]); // Limpa o caminho ao mudar o foco
     // Reset zoom to center on new tree
     setTimeout(() => treeRef.current?.reset(), 100);
   };
@@ -45,7 +47,38 @@ const App: React.FC = () => {
     if (originalRootId) {
         handleSetRoot(originalRootId);
         setGenerations(3);
+        setHighlightedPath([]);
         setSelectedPersonId(originalRootId);
+    }
+  };
+
+  const handleTracePath = (targetId: string) => {
+    if (!gedcomData || !selectedPersonId) return;
+
+    // Calcula o caminho mais curto usando BFS
+    const path = findShortestPath(gedcomData, selectedPersonId, targetId);
+    
+    if (path.length > 0) {
+        setHighlightedPath(path);
+        
+        // Encontra o "Pico" do caminho (Ancestral Comum ou ponto mais alto da conexão)
+        // Isso garante que tanto a origem quanto o destino sejam visíveis como descendentes/ancestrais do pico.
+        const peakId = getPathPeak(gedcomData, path);
+        
+        if (peakId && peakId !== rootPersonId) {
+             setRootPersonId(peakId);
+        }
+
+        // Aumenta as gerações para garantir que o caminho seja visível se for longo
+        // Usa o tamanho do caminho como base, mínimo 6, máximo 12
+        const requiredGens = Math.min(Math.max(path.length + 2, 6), 12);
+        setGenerations(requiredGens);
+        
+        // Centraliza a visão
+        setTimeout(() => treeRef.current?.reset(), 100);
+
+    } else {
+        alert("Não foi possível encontrar uma conexão entre estas pessoas.");
     }
   };
 
@@ -61,6 +94,7 @@ const App: React.FC = () => {
           const newRoot = findFirstPersonId(data);
           setRootPersonId(newRoot);
           setOriginalRootId(newRoot);
+          setHighlightedPath([]);
           setTimeout(() => treeRef.current?.reset(), 100);
         }
       };
@@ -92,6 +126,7 @@ const App: React.FC = () => {
           rootId={rootPersonId}
           generations={generations}
           onSelectPerson={handlePersonClick}
+          highlightedPath={highlightedPath}
         />
 
         {/* Top Header (Simple) */}
@@ -101,7 +136,7 @@ const App: React.FC = () => {
                 Minha Árvore
              </h1>
              <p className="text-xs text-gray-600">
-                GEDCOM Viewer
+                GEDCOM Viewer {highlightedPath.length > 0 && <span className="text-orange-600 font-bold">• Modo Caminho (Via {gedcomData.people[rootPersonId]?.name})</span>}
              </p>
            </div>
         </div>
@@ -126,6 +161,7 @@ const App: React.FC = () => {
           data={gedcomData}
           onClose={() => setSelectedPersonId(null)}
           onSelectRelative={handleSetRoot}
+          onTracePath={handleTracePath}
         />
       )}
     </div>

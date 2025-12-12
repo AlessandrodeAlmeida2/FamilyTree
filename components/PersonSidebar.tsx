@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, User, Calendar, MapPin, Sparkles, Users, Heart, GitBranch, Route, Search } from 'lucide-react';
 import { Person, GedcomData } from '../types';
 import { generateBiography } from '../services/geminiService';
 import { getSiblings } from '../utils/gedcom';
@@ -36,20 +36,37 @@ interface PersonSidebarProps {
   rootId: string;
   onClose: () => void;
   onSelectRelative: (id: string) => void;
+  onTracePath: (targetId: string) => void;
   data: GedcomData; // Pass full data to calculate relationships
 }
 
-export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, onClose, onSelectRelative, data }) => {
+export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, onClose, onSelectRelative, onTracePath, data }) => {
   const [bio, setBio] = useState<string | null>(null);
   const [loadingBio, setLoadingBio] = useState(false);
+  
+  // States for Path Tracer
+  const [searchTerm, setSearchTerm] = useState('');
+  const [targetId, setTargetId] = useState<string | null>(null);
 
-  // Reset bio when person changes
+  // Reset states when person changes
   React.useEffect(() => {
     setBio(null);
     setLoadingBio(false);
+    setSearchTerm('');
+    setTargetId(null);
   }, [person?.id]);
 
   if (!person) return null;
+
+  // Filter people for search
+  const filteredPeople = useMemo(() => {
+    if (!searchTerm) return [];
+    const lower = searchTerm.toLowerCase();
+    return Object.values(data.people)
+        .filter((p: Person) => p.id !== person.id) // Exclude current person
+        .filter((p: Person) => `${p.name} ${p.surname}`.toLowerCase().includes(lower))
+        .slice(0, 8); // Limit results
+  }, [searchTerm, data.people, person.id]);
 
   const handleGenerateBio = async () => {
     setLoadingBio(true);
@@ -134,6 +151,65 @@ export const PersonSidebar: React.FC<PersonSidebarProps> = ({ person, rootId, on
               {person.death?.place && <p className="text-sm text-gray-500">{person.death.place}</p>}
             </div>
           </div>
+        </div>
+
+        <hr className="border-gray-100" />
+
+        {/* Path Tracer Section */}
+        <div className="space-y-3 bg-orange-50 p-4 rounded-lg border border-orange-100">
+            <h3 className="font-bold text-orange-800 flex items-center gap-2 text-sm">
+                <Route size={18} />
+                Traçar Linha Direta
+            </h3>
+            <p className="text-xs text-orange-600">Encontre a conexão entre {person.name} e qualquer parente, incluindo primos distantes.</p>
+            
+            <div className="relative">
+                <div className="flex items-center gap-2 bg-white border border-orange-200 rounded-md px-2 focus-within:ring-2 focus-within:ring-orange-300">
+                    <Search size={14} className="text-gray-500" />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar parente..." 
+                        className="w-full py-2 text-sm outline-none text-gray-900 placeholder-gray-500 bg-transparent"
+                        value={searchTerm}
+                        onChange={(e) => {
+                            setSearchTerm(e.target.value);
+                            setTargetId(null); 
+                        }}
+                    />
+                </div>
+                {/* Search Results Dropdown */}
+                {searchTerm && !targetId && filteredPeople.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white shadow-lg rounded-md border border-gray-100 z-10 max-h-56 overflow-y-auto">
+                        {filteredPeople.map(p => (
+                            <div 
+                                key={p.id}
+                                className="p-3 text-sm text-gray-900 hover:bg-orange-50 cursor-pointer flex items-center gap-3 border-b border-gray-50 last:border-none"
+                                onClick={() => {
+                                    setSearchTerm(`${p.name} ${p.surname}`);
+                                    setTargetId(p.id);
+                                }}
+                            >
+                                <img src={p.imageUrl || `https://picsum.photos/seed/${p.id}/50`} className="w-8 h-8 rounded-full bg-gray-200 object-cover"/>
+                                <div className="flex flex-col">
+                                    <span className="font-medium">{p.name} {p.surname}</span>
+                                    <span className="text-xs text-gray-500">
+                                        {p.birth?.date ? `Nasc: ${p.birth.date.split(' ').pop()}` : ''}
+                                        {p.birth?.place ? ` • ${p.birth.place.split(',')[0]}` : ''}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <button 
+                onClick={() => targetId && onTracePath(targetId)}
+                disabled={!targetId}
+                className="w-full bg-orange-500 text-white py-2 rounded-md hover:bg-orange-600 transition-colors text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                Traçar Caminho
+            </button>
         </div>
 
         <hr className="border-gray-100" />
